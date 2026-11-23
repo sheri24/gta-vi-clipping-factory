@@ -41,11 +41,11 @@ STYLE_EXAMPLES = [
     "Nobody expected the getaway car to do this",
 ]
 
-PROMPT = """You write titles for viral YouTube Shorts. The clip is {duration} seconds from {channel}'s GTA 6 livestream.
+PROMPT = """You write titles for viral YouTube Shorts. The clip is {duration} seconds from {name}'s GTA 6 livestream.
 
 WHAT HAPPENED (use only these facts):
 - Stream title: "{stream_title}"
-- {channel} says (auto transcript, may have errors): "{transcript}"
+- {name} says (auto transcript, may have errors): "{transcript}"
 - Chat messages that describe the moment: {said}
 - Chat's loudest reactions (message × count): {reactions}
 - A vision model's rough description (vague, lowest priority): {summary}
@@ -56,7 +56,8 @@ Write 4 different titles, one per hook style:
 3. QUOTE: {channel}'s most dramatic words in quotes, plus a short punch.
 4. CURIOSITY: makes people need to watch, without lying about what happens.
 
-Title rules: 25-60 characters. Name {channel} or GTA 6 in at least two titles. Be specific: use the real
+Title rules: 25-60 characters. Every title names the streamer as "{name}", best as the subject
+("{name} refused to..."); mention GTA 6 where it fits. Be specific: use the real
 nouns and verbs from the facts above. At most ONE emoji, at the end. No hashtags. Never use the words
 chaotic, epic, insane, crazy, reaction, moment, livestream, compilation. Never invent events that the
 facts don't show. No swearing, no numbers about chat. Don't copy these style examples, just match their energy:
@@ -183,6 +184,24 @@ def is_informative(message: str) -> bool:
 
 # -- choosing a title -----------------------------------------------------------------------------
 
+CHANNEL_SUFFIX = re.compile(r"\s+(live|tv|gaming|official|clips|streams|vods?)$", re.I)
+
+
+def streamer_name(channel: str) -> str:
+    """How viewers call the streamer: the channel title without 'Live', 'TV', 'Clips'... ('Kai Cenat Live' → 'Kai Cenat')."""
+    name = channel.strip().lstrip("@")
+    while CHANNEL_SUFFIX.search(name) and len(CHANNEL_SUFFIX.sub("", name)) >= 2:
+        name = CHANNEL_SUFFIX.sub("", name).strip()
+    return name
+
+
+def names_streamer(title: str, channel: str) -> bool:
+    """The full name, or for a two-word name its first word ('Kai' counts for Kai Cenat)."""
+    low, name = title.lower(), streamer_name(channel).lower()
+    first = name.split()[0] if " " in name else ""
+    return name in low or (len(first) >= 3 and re.search(rf"\b{re.escape(first)}\b", low) is not None)
+
+
 def score_title(title: str, fact_words: set[str], channel: str) -> float:
     """Higher = more likely to be a specific, scroll-stopping, truthful title. Range roughly -10..10."""
     t = title.strip()
@@ -196,8 +215,12 @@ def score_title(title: str, fact_words: set[str], channel: str) -> float:
     specific = fact_words & set(words(t))           # real nouns/verbs from transcript + chat
     score += min(4, 1.5 * len(specific))
     score -= 2.5 * sum(1 for g in GENERIC if re.search(rf"\b{re.escape(g)}\b", low))
-    if channel.lower() in low or "gta" in low:
+    if names_streamer(t, channel):
+        score += 3                                  # viewers search and click for the streamer
+    if "gta" in low:
         score += 1
+    if re.search(r"\d", t) and "chat" in low:
+        score -= 4                                  # "13 requests ... filled the chat": numbers about chat
     emojis = len(EMOJI.findall(t))
     score += 0.5 if emojis == 1 else -2 * max(0, emojis - 1)
     letters = [c for c in t if c.isalpha()]
@@ -223,7 +246,12 @@ def pick_title(candidates: list[str], ctx: dict) -> tuple[str | None, list[tuple
             seen.add(c.lower())
             scored.append((c, score_title(c, facts, channel)))
     scored.sort(key=lambda x: -x[1])                # stable: ties keep the model's order
-    return (scored[0][0] if scored else None), scored
+    best = scored[0][0] if scored else None
+    if best and not names_streamer(best, channel):
+        prefixed = f"{streamer_name(channel)}: {best}"
+        if len(prefixed) <= TITLE_TARGET:
+            best = prefixed                         # none of them named the streamer: put the name in front
+    return best, scored
 
 
 # -- assembling ---------------------------------------------------------------------------------------
@@ -241,7 +269,7 @@ def assemble(creative: dict, ctx: dict, base_tags: list[str], source: str) -> Me
     channel, handle = ctx["channel"].strip(), (ctx.get("handle") or "").strip()   # YouTube titles can carry spaces
     candidates = list(creative.get("titles") or []) or [creative.get("title") or ""]
     best, scored = pick_title(candidates, ctx)
-    title = clean_text(best or "", TITLE_TARGET) or clean_text(f"{channel} in GTA 6 😱", TITLE_TARGET)
+    title = clean_text(best or "", TITLE_TARGET) or clean_text(f"{streamer_name(channel)} in GTA 6 😱", TITLE_TARGET)
     title = title[:1].upper() + title[1:]
     if "hook" in creative or "question" in creative:
         body = "\n\n".join(p for p in (clean_text(creative.get("hook") or "", 200),
@@ -251,10 +279,12 @@ def assemble(creative: dict, ctx: dict, base_tags: list[str], source: str) -> Me
     credit = (f"🎥 Clip from {channel}'s livestream{f' ({handle})' if handle else ''}. "
               f"Watch the full moment: {source_link(ctx['video_id'], ctx.get('offset_seconds'))}")
     # #GTA6 first: YouTube shows the first hashtags above the title
-    lead = dict.fromkeys(["#GTA6", hashtag(channel), *topical_hashtags(creative.get("hashtags") or [], channel)])
+    lead = dict.fromkeys(["#GTA6", hashtag(streamer_name(channel)),
+                          *topical_hashtags(creative.get("hashtags") or [], channel)])
     tags_line = " ".join([*list(lead)[:MAX_HASHTAGS - 1], "#Shorts"])
     description = "\n\n".join(p for p in (body, credit, tags_line) if p)
-    tags = clean_tags(creative.get("tags") or [], base_tags, [channel.lower()])
+    tags = clean_tags(creative.get("tags") or [], base_tags,
+                      list(dict.fromkeys([streamer_name(channel).lower(), channel.lower()])))
     return Metadata(title, description, tags, source, scored)
 
 
@@ -293,7 +323,8 @@ def clip_context(db: Database, clip_id: int) -> dict:
 def build_prompt(ctx: dict) -> str:
     said, reactions = chat_digest(ctx["chat"])
     return PROMPT.format(
-        channel=ctx["channel"], duration=ctx.get("duration") or 40, stream_title=ctx["stream_title"][:150],
+        channel=ctx["channel"], name=streamer_name(ctx["channel"]), duration=ctx.get("duration") or 40,
+        stream_title=ctx["stream_title"][:150],
         transcript=(ctx["transcript"] or "(no speech)")[:800],
         said=" | ".join(said) or "(none captured)",
         reactions=", ".join(f'"{m}" ×{n}' for m, n in reactions) or "(none)",

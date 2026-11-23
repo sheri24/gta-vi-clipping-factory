@@ -168,7 +168,18 @@ function clipLabel(c) {
   if (c.status === "approved" && c.publish_status === "queued") return ["approved", "Approved · in upload queue"];
   return [c.status, STATUS_LABEL[c.status] || c.status];
 }
-const videoUrl = (c) => (c.final_path ? `/clips/${c.id}/final.mp4` : c.vertical_path ? `/clips/${c.id}/vertical.mp4` : null);
+// The finished Short when there is one; otherwise the raw 16:9 footage, started at the clip's moment (clips are
+// only edited once the AI passes them, so rejected or waiting clips have no render of their own).
+function videoUrl(c, forThumb = false) {
+  if (c.final_path || c.vertical_path) {
+    const url = c.final_path ? `/clips/${c.id}/final.mp4` : `/clips/${c.id}/vertical.mp4`;
+    return forThumb ? `${url}#t=2` : url;
+  }
+  if (!c.source_path || c.source_start_pts == null) return null;
+  const t0 = Math.max(0, c.window_start_pts - c.source_start_pts), t1 = t0 + (c.window_end_pts - c.window_start_pts);
+  return forThumb ? `/clips/${c.id}/source.mp4#t=${(t0 + 2).toFixed(1)}` : `/clips/${c.id}/source.mp4#t=${t0.toFixed(1)},${t1.toFixed(1)}`;
+}
+const isRawPreview = (c) => !c.final_path && !c.vertical_path && !!c.source_path;
 
 function renderFilters() {
   $("#clip-filters").innerHTML = FILTERS.map(([key, label, fn]) => {
@@ -190,10 +201,10 @@ function renderClips() {
     return;
   }
   grid.innerHTML = clips.map((c) => {
-    const url = videoUrl(c);
+    const url = videoUrl(c, true);
     const [cls, label] = clipLabel(c);
     return `<button class="card" type="button" data-clip="${c.id}" aria-label="Clip ${c.id} from ${esc(c.channel_title)}: ${esc(label)}">
-      <div class="thumb">${url ? `<video muted loop playsinline preload="metadata" src="${url}#t=2"></video>` : `<div class="none">${c.files_deleted_at ? (c.status === "published" ? "On YouTube<br>local copy deleted" : "Files deleted") : esc(STATUS_LABEL[c.status] || c.status)}</div>`}
+      <div class="thumb">${url ? `<video muted loop playsinline preload="metadata" src="${url}"></video>` : `<div class="none">${c.files_deleted_at ? (c.status === "published" ? "On YouTube<br>local copy deleted" : "Files deleted") : esc(STATUS_LABEL[c.status] || c.status)}</div>`}
         ${c.score != null ? `<span class="score">${c.score.toFixed(1)}</span>` : ""}</div>
       <div class="card-body"><span class="card-who">${esc(c.channel_title || "Unknown channel")}</span>
         <span class="card-when">Clip ${c.id} · ${c.source_kind === "vod" ? "past stream · " : ""}${clock(c.created_at)}</span>
@@ -242,7 +253,7 @@ async function openClip(id, keepVideo = false) {
   state.openClip = c;
   const dlg = $("#clip-dialog");
   const [cls, label] = clipLabel(c);
-  $("#d-eyebrow").innerHTML = `<span class="status ${cls}">${esc(label)}</span> &nbsp;Clip ${c.id} · ${c.source_kind === "vod" ? "from a past stream · " : ""}${clock(c.created_at)}`;
+  $("#d-eyebrow").innerHTML = `<span class="status ${cls}">${esc(label)}</span> &nbsp;Clip ${c.id} · ${c.source_kind === "vod" ? "from a past stream · " : ""}${clock(c.created_at)}${isRawPreview(c) ? " · raw footage (the 9:16 edit is made once the clip passes)" : ""}`;
   $("#d-title").textContent = c.channel_title || "Clip";
   const llm = c.llm_result ? JSON.parse(c.llm_result) : null;
   $("#d-summary").textContent = llm?.summary || (c.error ? c.error : "");

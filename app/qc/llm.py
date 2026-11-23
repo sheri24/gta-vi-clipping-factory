@@ -34,7 +34,15 @@ SCHEMA = {
 }
 
 PROMPT = """You are a strict editor choosing YouTube Shorts from GTA 6 livestreams.
-The frames are evenly spaced through one {duration:.0f}-second clip, in order.
+The frames are evenly spaced through one {duration:.0f}-second clip, in order. Each frame shows the game with the
+streamer's webcam as a small box in a corner.
+
+How to read them:
+- GTA 6 story cutscenes, chapter title cards and in-game dialogue ARE GTA 6 content (big story moments often are the
+  best clips), not "people in a room".
+- Still frames can't show sound or motion: a streamer screaming or laughing, or chat going wild, is in the transcript
+  and the chat below, not in the frames. Judge reaction and excitement mostly from those. Chat this busy means
+  something happened even if the frames look calm.
 
 Stream: "{stream_title}" by {channel}
 {note}What the streamer says (auto transcript, may contain errors): {transcript}

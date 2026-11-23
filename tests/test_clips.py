@@ -197,3 +197,27 @@ def test_worker_cuts_exact_window_across_segments(db, tmp_path, layout, rect):
 def test_split_without_rect_rejected():
     with pytest.raises(ValueError):
         video_filter(RenderOptions(layout="split"))
+
+
+@needs_ffmpeg
+def test_raw_preview_of_live_footage_plays_in_a_browser_at_the_right_second(db, tmp_path):
+    """Rejected/waiting clips have no render: the dashboard plays the raw source instead. Live sources are
+    MPEG-TS with stream PTS; the MP4 copy must start at 0 so '#t=window_start - source_start' lands on the moment."""
+    from app.main import playable_source
+    segs = make_recording(tmp_path)                       # red for 10 s then blue, PTS offset like YouTube
+    source = tmp_path / "source.ts"
+    source.write_bytes(b"".join(s.read_bytes() for s in segs))
+    source_start = probe(source).start_time
+    preview = playable_source(source, "ffmpeg")
+    assert preview.suffix == ".mp4" and playable_source(source, "ffmpeg") == preview     # made once, then reused
+    assert probe(preview).start_time < 0.1
+    first = probe(segs[0]).start_time
+    assert pixel_at(preview, first + 8 - source_start) == "red"      # stream second first+8: before the switch
+    assert pixel_at(preview, first + 12 - source_start) == "blue"    # after it
+
+
+def pixel_at(video, t):
+    out = subprocess.run(["ffmpeg", "-hide_banner", "-loglevel", "error", "-ss", str(t), "-i", str(video),
+                          "-vf", "crop=2:2:639:359", "-frames:v", "1", "-f", "rawvideo", "-pix_fmt", "rgb24", "-"],
+                         capture_output=True, check=True).stdout
+    return pixel_name(out[0], out[2])

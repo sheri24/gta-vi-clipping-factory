@@ -4,6 +4,7 @@ Interactive API (add/remove channels, poll now): http://127.0.0.1:8000/docs
 """
 
 import json
+import subprocess
 import os
 import threading
 import logging
@@ -436,12 +437,30 @@ def get_clips(request: Request, status: str | None = None, limit: int = 50):
 
 @app.get("/clips/{clip_id}/{kind}.mp4")
 def clip_video(clip_id: int, kind: str, request: Request):
-    if kind not in ("vertical", "final"):
+    if kind not in ("vertical", "final", "source"):
         raise HTTPException(404, "unknown rendition")
     row = svc(request)["db"].one(f"SELECT {kind}_path p FROM clips WHERE id = ?", (clip_id,))
-    if not row or not row["p"]:
-        raise HTTPException(404, "clip not rendered")
+    if not row or not row["p"] or not Path(row["p"]).exists():
+        raise HTTPException(404, "clip not rendered" if kind != "source" else "no footage for this clip")
+    if kind == "source":   # raw footage preview for clips that aren't rendered (yet)
+        return FileResponse(playable_source(Path(row["p"]), svc(request)["settings"].ffmpeg_bin), media_type="video/mp4")
     return FileResponse(row["p"], media_type="video/mp4")
+
+
+def playable_source(source: Path, ffmpeg_bin: str) -> Path:
+    """Past-stream footage is already MP4. Live footage is MPEG-TS, which browsers can't play: copy it into an MP4
+    once (no re-encoding, about a second). make_zero keeps file time 0 = the source's first frame, which is what
+    the dashboard's #t= offset (window_start_pts - source_start_pts) assumes."""
+    if source.suffix.lower() == ".mp4":
+        return source
+    preview = source.with_name("preview.mp4")
+    if not preview.exists():
+        tmp = source.with_name("preview.tmp.mp4")
+        subprocess.run([ffmpeg_bin, "-v", "error", "-y", "-i", str(source), "-c", "copy", "-avoid_negative_ts",
+                        "make_zero", "-movflags", "+faststart", str(tmp)], check=True, timeout=120,
+                       creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+        tmp.replace(preview)
+    return preview
 
 
 @app.post("/api/clips/{clip_id}/rerender")

@@ -68,7 +68,8 @@ def test_model_output_is_parsed_and_cleaned():
              "hook": "Lacy can't believe it.", "question": "Did you see it coming?",
              "hashtags": ["GTA6Ending", "#Shorts", "Lacy"], "tags": ["Lacy", "GTA 6 Ending"]})}})
     md = MetadataWriter("http://ollama", "m", BASE, http=httpx.Client(transport=httpx.MockTransport(ok))).write(CTX)
-    assert md.source == "llm" and md.title == "Jason got SHOT in the GTA 6 finale 😭"   # generic one lost
+    # the generic one lost; the winner didn't name the streamer, so the name goes in front
+    assert md.source == "llm" and md.title == "Lacy: Jason got SHOT in the GTA 6 finale 😭"
     assert [c for c, _ in md.candidates][1].startswith("Lacy's chaotic")
     assert md.tags[:2] == ["lacy", "gta 6 ending"]
     assert md.description.startswith("Lacy can't believe it.\n\nDid you see it coming?")
@@ -440,3 +441,29 @@ def test_offline_sign_in_refresh_is_a_network_problem_not_a_sign_out(tmp_path, m
         assert e.kind == "network" and "no internet" in str(e)
     else:
         raise AssertionError("expected PublishError")
+
+
+
+def test_titles_name_the_streamer():
+    from app.publish.metadata import names_streamer, pick_title, streamer_name
+    assert streamer_name("Kai Cenat Live") == "Kai Cenat" and streamer_name("IShowSpeed") == "IShowSpeed"
+    assert names_streamer("Kai picks the bad ending", "Kai Cenat Live")
+    assert not names_streamer("Kaitlyn wins the race", "Kai Cenat Live")
+    ctx = dict(channel="Kai Cenat Live", chat=[], transcript="club home betrayal ending")
+    best, _ = pick_title(["What betrayal set up the GTA 6 bad ending?", "Kai Cenat picks club over home 💀"], ctx)
+    assert best == "Kai Cenat picks club over home 💀"                 # the named one wins
+    best, _ = pick_title(["What betrayal set up the GTA 6 bad ending?"], ctx)
+    assert best == "Kai Cenat: What betrayal set up the GTA 6 bad ending?"   # nobody named him: prefixed
+    best, scored = pick_title(["13 requests for club + 8 for home filled the chat.",
+                               "Kai Cenat can't pick between club and home"], ctx)
+    assert best.startswith("Kai Cenat can't")                           # chat-count titles lose
+
+
+def test_hashtag_uses_the_streamer_name():
+    from app.publish.metadata import assemble
+    ctx = dict(channel="Kai Cenat Live", handle="@KaiCenatLive", video_id="v", offset_seconds=60, chat=[],
+               transcript="", stream_title="GTA 6", summary="")
+    md = assemble({"titles": ["Kai Cenat picks the bad ending"], "hook": "h", "question": "q", "hashtags": [],
+                   "tags": []}, ctx, ["gta 6"], "llm")
+    assert "#KaiCenat " in md.description and "#KaiCenatLive" not in md.description
+    assert "kai cenat" in md.tags
