@@ -110,7 +110,7 @@ class Settings(BaseSettings):
     publish_slots_timezone: str = "America/New_York"             # the audience's clock
     publish_breaking_score: float = 8.0     # a live clip this good, this fresh, posts at once
     publish_breaking_minutes: int = 120
-    publish_max_age_hours: float = 96       # older moments are dropped instead of posted
+    publish_max_age_hours: float = 0        # 0 = never drop a queued clip; > 0 = drop moments older than this
     publish_max_per_stream_per_day: int = 2
     publish_category_id: str = "20"         # YouTube "Gaming"
     publish_base_tags: str = "gta 6,gta vi,gta 6 gameplay,grand theft auto 6,gaming,shorts"

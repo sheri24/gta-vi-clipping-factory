@@ -34,7 +34,7 @@ class PostingStrategy:
     tz: ZoneInfo = ZoneInfo("America/New_York")    # the audience's clock (these streamers: mostly US)
     breaking_score: float = 8.0
     breaking_minutes: float = 120                   # moment this recent + score this high = post now
-    max_age_hours: float = 96                       # older moments are dropped (past streams: up to 72 h old)
+    max_age_hours: float = 0                        # 0 = never drop a clip (owner's choice); > 0 = drop older moments
     per_stream_per_day: int = 2
     freshness_per_day: float = 1.0                  # score points lost per day since the moment
     same_channel_penalty: float = 1.0               # variety: avoid the same streamer twice in a row
@@ -193,7 +193,7 @@ class PublishQueue:
 
     def expire_old(self, now: datetime) -> int:
         """Drop queued clips whose moment is older than the strategy allows."""
-        if not self.strategy:
+        if not self.strategy or not self.strategy.max_age_hours:
             return 0
         n = 0
         for c in self.db.query("""SELECT q.id, x.window_start_utc m FROM publish_queue q

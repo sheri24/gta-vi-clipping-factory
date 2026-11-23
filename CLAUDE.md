@@ -42,7 +42,8 @@ Explain trade-offs plainly and verify behaviour on real data before claiming it 
   owner chose it knowing a license on this repo would then have to be AGPL-compatible.
 - **Operator note:** per-clip "tell the AI what's on screen", trusted over the model's own reading (small model, 6 frames).
 - **Posting:** 6 slots on the US evening (US Eastern), 6/day, a breaking lane for live clips ≥ 8 within 2 h, freshness
-  and variety in the pick, expiry after 96 h. The owner chose these; see `PostingStrategy`.
+  and variety in the pick, **no expiry** (the owner asked that no queued Short is ever dropped; older ones only rank
+  lower). The owner chose these; see `PostingStrategy`.
 - **Alerts:** ntfy, because the owner's ISP blocks Telegram's bot API (Telegram code is kept as an alternative).
 - **Past streams without chat replay** keep being retried (hourly ×6) rather than given up early: the owner asked to
   undo a "give up after 12 h" change because replay can appear after processing.

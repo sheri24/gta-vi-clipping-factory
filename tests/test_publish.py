@@ -179,7 +179,7 @@ def test_publishes_best_first_then_respects_interval(db):
     assert db.one("SELECT status FROM clips WHERE id = ?", (b,))["status"] == "published"
     # within 30 min of the last upload: nothing
     assert q.run_once(NOW + timedelta(minutes=10)) is None
-    assert "next upload after" in q.why_not_now(datetime.now(timezone.utc))
+    assert "next upload after" in q.why_not_now(NOW + timedelta(minutes=10))
 
 
 def test_daily_cap(db):
@@ -380,10 +380,16 @@ def test_breaking_live_moment_skips_the_wait(db):
 
 def test_fresh_clip_beats_slightly_better_old_one_and_old_ones_expire(db):
     old, fresh, ancient = bank(db, [(8.0, 60, "s1", "live"), (7.5, 1, "s2", "live"), (9.5, 120, "s3", "live")])
-    q = make_queue(db, FakePublisher(), strategy=PostingStrategy())
+    q = make_queue(db, FakePublisher(), strategy=PostingStrategy(max_age_hours=96))
     assert q.run_once(NOW)["clip_id"] == fresh                          # 7.5 now beats 8.0 from 2.5 days ago
     gone = db.one("SELECT status, error FROM publish_queue WHERE clip_id = ?", (ancient,))
     assert gone["status"] == "expired" and "5.0 days old" in gone["error"]
+
+
+def test_by_default_no_clip_ever_expires(db):
+    [ancient] = bank(db, [(5.0, 24 * 30, "s1", "live")])                # a month old
+    q = make_queue(db, FakePublisher(), strategy=PostingStrategy())
+    assert q.run_once(NOW)["clip_id"] == ancient                        # still posted, never dropped
 
 
 def test_at_most_two_posts_per_stream_per_day(db):

@@ -182,7 +182,7 @@ Streamers stop streaming daily once launch hype fades, but every stream stays on
 - **Posting strategy (`queue.py: PostingStrategy`):** one post per slot at `PUBLISH_SLOTS` on `PUBLISH_SLOTS_TIMEZONE`
   (12:00, 14:30, 17:00, 19:00, 21:00, 23:00 US Eastern). Pick = `score − 1/day since the moment − 1 if same streamer
   as the last post`, ≤ 2 posts per stream per day. **Breaking lane:** a live clip scoring ≥ 8 within 2 h of the moment
-  posts at once. Moments older than 96 h expire. Always: ≤ 6 per Pacific day, ≥ 30 min apart. A slot missed while the
+  posts at once. Queued clips never expire (owner's choice; `PUBLISH_MAX_AGE_HOURS` > 0 turns expiry on). Always: ≤ 6 per Pacific day, ≥ 30 min apart. A slot missed while the
   laptop slept posts once on wake (no burst).
 - **Upload (`youtube.py`):** resumable `videos.insert`, 1 quota unit from a separate allowance of 100/day. Errors are
   classified: `network` (wait 5 min, no attempt used), `quota` (wait for the Pacific reset), `auth` (sign in again),
