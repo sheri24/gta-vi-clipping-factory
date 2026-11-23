@@ -1,0 +1,14 @@
+# Separate venv (narrator\.venv): torch is large and the clip factory doesn't need it.
+#   py -3.12 -m venv narrator\.venv
+#   narrator\.venv\Scripts\python -m pip install -r narrator\requirements.txt --extra-index-url https://download.pytorch.org/whl/cpu
+torch==2.15.0+cpu
+torchvision==0.29.2+cpu
+openai-clip==1.0.1
+kokoro-onnx==0.6.1
+onnxruntime==1.32.0
+soundfile==0.14.0
+numpy==2.5.4
+pillow==13.0.0
+httpx==0.28.1
+yt-dlp==2026.10.26
+yt-dlp-ejs==0.8.0
