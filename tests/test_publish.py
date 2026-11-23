@@ -144,9 +144,9 @@ def setup(db, permission=1, clips=((7.5, "approved"),)):
     for score, status in clips:
         ids.append(db.execute(
             """INSERT INTO clips (session_id, window_start_pts, window_end_pts, window_start_utc, window_end_utc, status,
-                                  score, final_path, created_at, updated_at)
-               VALUES (?, 0, 40, 1795385000, 1795385040, ?, ?, ?, ?, ?)""",
-            (sid, status, score, f"final{score}.mp4", utcnow(), utcnow())).lastrowid)
+                                  score, final_path, created_at, updated_at, nudity_checked_at)
+               VALUES (?, 0, 40, 1795385000, 1795385040, ?, ?, ?, ?, ?, ?)""",
+            (sid, status, score, f"final{score}.mp4", utcnow(), utcnow(), utcnow())).lastrowid)
     return ids
 
 
@@ -338,9 +338,9 @@ def bank(db, clips):
         moment = NOW.timestamp() - hours * 3600
         ids.append(db.execute(
             """INSERT INTO clips (session_id, window_start_pts, window_end_pts, window_start_utc, window_end_utc,
-                                  status, score, final_path, source_kind, created_at, updated_at)
-               VALUES (?, 0, 40, ?, ?, 'approved', ?, 'f.mp4', ?, ?, ?)""",
-            (sid, moment, moment + 40, score, kind, utcnow(), utcnow())).lastrowid)
+                                  status, score, final_path, source_kind, created_at, updated_at, nudity_checked_at)
+               VALUES (?, 0, 40, ?, ?, 'approved', ?, 'f.mp4', ?, ?, ?, ?)""",
+            (sid, moment, moment + 40, score, kind, utcnow(), utcnow(), utcnow())).lastrowid)
     enqueue_approved(db)
     return ids
 

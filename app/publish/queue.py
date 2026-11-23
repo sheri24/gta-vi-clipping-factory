@@ -83,7 +83,7 @@ def enqueue_approved(db: Database, platform: str = "youtube") -> list[int]:
         """SELECT x.id, x.score, x.source_kind FROM clips x
              JOIN live_sessions s ON s.id = x.session_id
              JOIN channels c ON c.channel_id = s.channel_id
-            WHERE x.status = 'approved' AND c.permission_confirmed = 1
+            WHERE x.status = 'approved' AND c.permission_confirmed = 1 AND x.nudity_checked_at IS NOT NULL
               AND NOT EXISTS (SELECT 1 FROM publish_queue q WHERE q.clip_id = x.id AND q.platform = ?)""",
         (platform,))
     now = utcnow()
@@ -147,9 +147,10 @@ class PublishQueue:
         if self.strategy:
             return self._breaking(now) or (None if self._slot_used(now) else self._best_for_slot(now))
         row = self.db.one(
-            """SELECT * FROM publish_queue WHERE status = 'queued'
-                 AND (next_attempt_at IS NULL OR next_attempt_at <= ?)
-               ORDER BY priority DESC, queued_at LIMIT 1""", (now.isoformat(timespec="seconds"),))
+            """SELECT q.* FROM publish_queue q JOIN clips x ON x.id = q.clip_id
+                WHERE q.status = 'queued' AND x.nudity_checked_at IS NOT NULL
+                 AND (q.next_attempt_at IS NULL OR q.next_attempt_at <= ?)
+               ORDER BY q.priority DESC, q.queued_at LIMIT 1""", (now.isoformat(timespec="seconds"),))
         return dict(row) if row else None
 
     # -- posting strategy -------------------------------------------------------------------------
@@ -158,7 +159,8 @@ class PublishQueue:
         rows = self.db.query(
             """SELECT q.*, x.score, x.source_kind, x.window_start_utc moment_utc, x.session_id, s.channel_id
                  FROM publish_queue q JOIN clips x ON x.id = q.clip_id JOIN live_sessions s ON s.id = x.session_id
-                WHERE q.status = 'queued' AND (q.next_attempt_at IS NULL OR q.next_attempt_at <= ?)""",
+                WHERE q.status = 'queued' AND x.nudity_checked_at IS NOT NULL
+                  AND (q.next_attempt_at IS NULL OR q.next_attempt_at <= ?)""",
             (now.isoformat(timespec="seconds"),))
         return [{**dict(r), "age_hours": (now.timestamp() - r["moment_utc"]) / 3600} for r in rows]
 

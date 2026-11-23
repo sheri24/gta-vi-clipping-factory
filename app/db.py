@@ -371,6 +371,10 @@ MIGRATIONS: list[str] = [
     """
     ALTER TABLE clips ADD COLUMN review_note TEXT;
     """,
+    # 16 — when the clip's whole window was scanned for nudity; nothing uploads without it
+    """
+    ALTER TABLE clips ADD COLUMN nudity_checked_at TEXT;
+    """,
 ]
 
 

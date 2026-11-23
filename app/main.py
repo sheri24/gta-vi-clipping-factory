@@ -42,6 +42,7 @@ from app.publish.metadata import MetadataWriter, clip_context
 from app.publish.queue import PostingStrategy, PublishQueue, blocked_by_permission, enqueue_approved
 from app.publish.youtube import YouTubePublisher, sign_in_status
 from app.qc.llm import OllamaJudge
+from app.qc.nudity import NudityScanner
 from app.qc.worker import QcWorker
 from app.spikes.detector import Params, SpikeDetector
 from app.recording.recorder import RecorderManager, disk_free_gb
@@ -82,7 +83,8 @@ def build_services(settings) -> dict:
                                    settings.credit_enabled, settings.ffmpeg_bin)
     caption_worker.split_margin_v = settings.caption_margin_v_split
     qc_worker = QcWorker(db, OllamaJudge(settings.ollama_url, settings.qc_model), settings.qc_frames,
-                         settings.qc_min_score, settings.qc_llm_weight, settings.ffmpeg_bin)
+                         settings.qc_min_score, settings.qc_llm_weight, settings.ffmpeg_bin,
+                         nudity=NudityScanner(settings.qc_nudity_threshold, ffmpeg_bin=settings.ffmpeg_bin))
     writer = MetadataWriter(settings.ollama_url, settings.metadata_model or settings.qc_model,
                             [t.strip() for t in settings.publish_base_tags.split(",") if t.strip()])
     publish_queue = PublishQueue(db, YouTubePublisher(settings.youtube_token_path, settings.publish_category_id),
@@ -135,6 +137,7 @@ def run_post_pipeline(services: dict) -> None:
     """Slow path: transcript (Whisper) → AI review (Ollama) → render only what passed."""
     services["caption_worker"].run_all()
     services["qc_worker"].run_all()
+    services["qc_worker"].check_unscanned()     # clips approved before the nudity scan existed
     services["caption_worker"].render_all()
 
 

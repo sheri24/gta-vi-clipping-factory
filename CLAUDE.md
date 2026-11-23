@@ -36,6 +36,10 @@ Explain trade-offs plainly and verify behaviour on real data before claiming it 
   reports `gta_on_screen` and `funny` as information only. Don't reintroduce a hard rule like that.
 - **Review before render:** the AI judges raw footage; only passed clips get the 9:16 render. Rejected clips' files are
   deleted 6 h later (time to overrule).
+- **No nudity, ever:** a TGG clip with a nude cutscene character was approved and only caught by hand. Every clip's
+  whole window is scanned with NudeNet (`qc/nudity.py`) before the AI review, and the upload queue refuses clips without
+  `nudity_checked_at`. Never weaken this gate. **License:** NudeNet's files are AGPL-3.0 (its metadata says MIT); the
+  owner chose it knowing a license on this repo would then have to be AGPL-compatible.
 - **Operator note:** per-clip "tell the AI what's on screen", trusted over the model's own reading (small model, 6 frames).
 - **Posting:** 6 slots on the US evening (US Eastern), 6/day, a breaking lane for live clips ≥ 8 within 2 h, freshness
   and variety in the pick, expiry after 96 h. The owner chose these; see `PostingStrategy`.
@@ -57,7 +61,7 @@ job table, clip status machine and data model. Key ideas an edit must respect:
 - **Outages don't burn attempts:** wrap network failures with `app/net.py: is_network_error` and retry without
   counting an attempt (downloads, VOD analysis, uploads already do).
 - **Migrations are append-only** (`app/db.py: MIGRATIONS`). Never edit an applied migration; add a new entry. The
-  owner's database is at version 15.
+  owner's database is at version 16.
 - **Spikes have a `source`** (live/vod): `plan_clips` takes live ones, `VodWorker.plan` takes VOD ones.
 
 ## Running and testing

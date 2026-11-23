@@ -91,6 +91,7 @@ class Settings(BaseSettings):
     qc_frames: int = 6
     qc_min_score: float = 6.0               # 0-10; approved at or above
     qc_llm_weight: float = 0.6              # final = w*llm + (1-w)*objective
+    qc_nudity_threshold: float = 0.4        # NudeNet confidence that rejects a clip (exposed genitals/buttocks/breasts)
 
     # Publishing (Phase 9)
     publish_enabled: bool = False           # master switch; off until OAuth is set up

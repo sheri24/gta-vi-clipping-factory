@@ -23,6 +23,7 @@ from app.publish.metadata import assemble
 from app.publish.queue import PublishQueue, enqueue_approved
 from app.publish.youtube import UploadResult
 from app.qc.llm import LlmVerdict
+from app.qc.nudity import NudityScanner
 from app.qc.worker import QcWorker
 from app.recording.media import probe
 from app.recording.retention import cleanup_ended_sessions, purge_published_clips
@@ -154,7 +155,17 @@ def test_stream_to_published_short(db, tmp_path):
     assert captions.run_all() == [cid]
     assert db.one("SELECT status FROM clips WHERE id = ?", (cid,))["status"] == "transcribed"
 
-    assert QcWorker(db, FakeJudge(), frames=3).run_all() == [cid]          # judged before any editing
+    scanned = []
+
+    class CleanDetector:                       # NudeNet stand-in: real ffmpeg frames, nothing found
+        def detect(self, view):
+            scanned.append(view.shape)
+            return []
+
+    nudity = NudityScanner(ffmpeg_bin="ffmpeg", detector=CleanDetector())
+    assert QcWorker(db, FakeJudge(), frames=3, nudity=nudity).run_all() == [cid]   # judged before any editing
+    assert len(scanned) % 5 == 0 and len(scanned) >= 5 * 16        # 8 s at 2 fps, full frame + 4 quarters each
+    assert db.one("SELECT nudity_checked_at FROM clips WHERE id = ?", (cid,))["nudity_checked_at"]
     clip = db.one("SELECT * FROM clips WHERE id = ?", (cid,))
     assert clip["status"] == "passed" and clip["final_path"] is None and clip["score"] >= 6, clip["error"]
 

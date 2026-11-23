@@ -493,8 +493,8 @@ def test_live_clip_outranks_equal_vod_clip_in_upload_queue(db):
                      (CH, utcnow())).lastrowid
     for kind in ("live", "vod"):
         db.execute("""INSERT INTO clips (session_id, window_start_pts, window_end_pts, window_start_utc, window_end_utc,
-                                         status, score, source_kind, created_at, updated_at)
-                      VALUES (?, 0, 40, 0, 40, 'approved', 8.0, ?, ?, ?)""", (sid, kind, utcnow(), utcnow()))
+                                         status, score, source_kind, created_at, updated_at, nudity_checked_at)
+                      VALUES (?, 0, 40, 0, 40, 'approved', 8.0, ?, ?, ?, ?)""", (sid, kind, utcnow(), utcnow(), utcnow()))
     enqueue_approved(db)
     rows = db.query("SELECT x.source_kind, q.priority FROM publish_queue q JOIN clips x ON x.id = q.clip_id")
     assert {r["source_kind"]: r["priority"] for r in rows} == {"live": 8.0, "vod": 7.0}

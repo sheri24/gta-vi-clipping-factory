@@ -10,6 +10,7 @@ from pathlib import Path
 
 from app.db import Database, utcnow
 from app.qc.llm import OllamaJudge, sample_frames
+from app.qc.nudity import NudityScanner, hits_json, summarize
 from app.qc.signals import Signals, hard_rejects, measure, objective_score
 
 log = logging.getLogger(__name__)
@@ -29,8 +30,9 @@ def decide(obj: float, llm_score: float | None, llm_reject: bool, hard: list[str
 
 class QcWorker:
     def __init__(self, db: Database, judge: OllamaJudge, frames: int = 6, min_score: float = 6.0,
-                 llm_weight: float = 0.6, ffmpeg_bin: str = "ffmpeg"):
+                 llm_weight: float = 0.6, ffmpeg_bin: str = "ffmpeg", nudity: NudityScanner | None = None):
         self.db = db
+        self.nudity = nudity          # None = no nudity scan (tests); the app always passes one
         self.judge = judge
         self.frames = frames
         self.min_score = min_score
@@ -88,13 +90,22 @@ class QcWorker:
             )
             hard = hard_rejects(signals)
             obj = objective_score(signals)
+            signals_json = signals.to_dict()
+            if self.nudity and not hard:  # cheap (~10-25 s) and decisive: before the 2-minute AI review
+                hits = self.nudity.scan(Path(clip["source_path"]), offset, duration)
+                self._set(cid, nudity_checked_at=utcnow())
+                signals_json["nudity"] = hits_json(hits)          # kept even when it's a one-frame blip
+                if self.nudity.is_nude(hits):
+                    hard.append(summarize(hits))
             verdict = None
-            if not hard:   # don't spend a minute of CPU on a black/frozen/silent clip
+            if not hard:   # don't spend a minute of CPU on a black/frozen/silent/nude clip
                 frames = sample_frames(Path(clip["source_path"]), offset, duration, self.frames, self.ffmpeg_bin)
                 verdict = self.judge.judge(frames, duration=duration, stream_title=ctx["stream_title"],
                                            channel=ctx["channel"], transcript=ctx["transcript"],
                                            chat=json.loads(clip.get("chat_sample") or "[]"),
                                            note=clip.get("review_note"))
+            if verdict and verdict.nudity:
+                hard.append("the AI review saw nudity or sexual content")
             final, decision, reasons = decide(obj, verdict.score if verdict else None,
                                               bool(verdict and verdict.reject), hard, self.min_score,
                                               self.llm_weight)
@@ -102,7 +113,7 @@ class QcWorker:
                 """INSERT OR REPLACE INTO evaluations (clip_id, signals, objective_score, llm_model, llm_result,
                        llm_score, final_score, decision, reasons, seconds_taken, created_at)
                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-                (cid, json.dumps(signals.to_dict()), obj, self.judge.model if verdict else None,
+                (cid, json.dumps(signals_json), obj, self.judge.model if verdict else None,
                  json.dumps(asdict(verdict)) if verdict else None, verdict.score if verdict else None,
                  final, decision, json.dumps(reasons), time.monotonic() - t0, utcnow()))
             if decision == "approved" and not clip.get("final_path"):
@@ -116,3 +127,35 @@ class QcWorker:
             self._set(cid, status="failed" if final_try else clip["status"], error=str(e)[-500:])
             self.db.log_error("qc", str(e)[:200], str(cid))
             return False
+
+    def check_unscanned(self) -> list[int]:
+        """Scan passed/approved clips that never had a nudity scan (approved before it existed, or approved by
+        hand straight from a rejection). Nudity → rejected and taken out of the upload queue. Returns rejected ids."""
+        if not self.nudity:
+            return []
+        rejected = []
+        for clip in self.db.query("""SELECT * FROM clips WHERE status IN ('passed', 'approved')
+                                       AND nudity_checked_at IS NULL ORDER BY source_kind = 'vod', id"""):
+            clip = dict(clip)
+            if clip["source_path"] and Path(clip["source_path"]).exists():
+                video, offset = Path(clip["source_path"]), clip["window_start_pts"] - clip["source_start_pts"]
+            elif clip["final_path"] and Path(clip["final_path"]).exists():
+                video, offset = Path(clip["final_path"]), 0.0
+            else:
+                continue
+            try:
+                hits = self.nudity.scan(video, offset, clip["window_end_pts"] - clip["window_start_pts"])
+            except Exception as e:
+                log.exception("nudity scan of clip %d failed", clip["id"])
+                self.db.log_error("qc.nudity", str(e)[:200], str(clip["id"]))
+                continue
+            if self.nudity.is_nude(hits):
+                reason = summarize(hits)
+                self._set(clip["id"], status="rejected", nudity_checked_at=utcnow(), error=reason)
+                self.db.execute("""UPDATE publish_queue SET status = 'cancelled', error = ?, updated_at = ?
+                                    WHERE clip_id = ? AND status IN ('queued', 'failed')""", (reason, utcnow(), clip["id"]))
+                log.warning("clip %d rejected before upload: %s", clip["id"], reason)
+                rejected.append(clip["id"])
+            else:
+                self._set(clip["id"], nudity_checked_at=utcnow())
+        return rejected

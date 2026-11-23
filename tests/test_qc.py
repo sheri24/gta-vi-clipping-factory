@@ -83,7 +83,7 @@ class FakeJudge:
 
     def __init__(self, scores=8, reject=False, up=True, gta=True, funny=3):
         self.scores, self.reject, self.up, self.calls = scores, reject, up, []
-        self.gta, self.funny = gta, funny
+        self.gta, self.funny, self.nudity = gta, funny, False
 
     def available(self):
         return self.up
@@ -92,7 +92,8 @@ class FakeJudge:
         self.calls.append((len(frames), ctx))
         return LlmVerdict({k: self.scores for k in ("excitement", "reaction", "gameplay", "standalone",
                                                     "visual_quality", "clean_start_end")},
-                          "He crashes a jet into the beach.", self.reject, "big reaction", self.gta, self.funny)
+                          "He crashes a jet into the beach.", self.reject, "big reaction", self.gta, self.funny,
+                          self.nudity)
 
 
 def lavfi(video_src, opts):

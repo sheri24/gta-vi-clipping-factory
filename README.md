@@ -36,6 +36,7 @@ with every stream. Everything runs on one Windows laptop: no cloud servers, no p
 | **Find moments** | A spike in *distinct chatters* per 10 s, judged against that stream's own normal. Giveaways and polls (everyone typing the same word) are ignored. |
 | **Past streams** | While nobody is live: the chat replay of each finished GTA 6 stream goes through the same spike detector, and only ~45 s around each moment is downloaded, never the whole stream. |
 | **Cut + transcript** | The moment's footage, then Whisper speech-to-text on the laptop. |
+| **Nudity check** | Every half-second of the clip is scanned for nudity (NudeNet, full frame + zoomed quarters); GTA 6 has nude story scenes and YouTube removes them. Nothing uploads without this scan. |
 | **AI review** | A local vision model (Ollama) scores frames + transcript + chat. Only clips that pass get edited, so rejected clips cost no render. |
 | **Edit** | 1080×1920: facecam on top and gameplay below when a webcam is found (blurred full frame otherwise), word-by-word captions, `@channel` credit, −14 LUFS. |
 | **Publish** | Title/description/hashtags from a local LLM, uploaded to YouTube in 6 daily slots on the audience's evening; a very strong live moment posts at once. |

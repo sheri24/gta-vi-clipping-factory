@@ -147,6 +147,16 @@ Streamers stop streaming daily once launch hype fades, but every stream stays on
 - **Transcript:** `WHISPER_BACKEND=openai` (official openai-whisper, weights from OpenAI's CDN) by default, because
   Hugging Face downloads were rate-limited/blocked here; `faster` is ~2–3× faster if Hugging Face works. Measured
   30–160 s per 40 s clip on CPU.
+- **Nudity check (`qc/nudity.py`):** before the AI review, NudeNet scans the whole raw window at 2 fps, on the full
+  frame and four overlapping 60% quarters (a person in a wide shot is too small at the model's 320 px; a quarter makes
+  them ~2.8× bigger). A clip is rejected when exposed genitals, buttocks, breasts or anus score ≥ `QC_NUDITY_THRESHOLD`
+  (0.4) on **≥ 3 frames** (1.5 s), or any single hit is ≥ 0.75 ("nudity: exposed buttocks at 0:26 (0.66), on 11
+  frames"). Built after a TGG story cutscene with a nude character at the end of a clip was approved by the AI (6
+  frames missed it) and caught by hand. Measured on 30 real clips: that clip hit 11 frames (max 0.66); every false alarm
+  (a shoulder in a tank top, a tattooed arm, a cat thumbnail, a face on a pink pillow) hit exactly one frame
+  (max 0.52), so the frame count separates them where a higher threshold could not. The AI is also asked a `nudity` question as a second layer. Clips approved
+  before the scan existed are scanned before upload (`check_unscanned`), and the upload queue only takes clips with
+  `nudity_checked_at` set. ~10–25 s per clip on CPU.
 - **AI review (`qc/`):** hard rejects first (black > 30%, frozen > 50%, no audio), measured on the raw window. Then
   `gemma4:e2b` gets 6 frames + transcript + chat and scores excitement, reaction, gameplay, standalone, picture quality,
   clean start/end (0–10), plus a `reject` flag. Final = 0.6 × AI + 0.4 × objective (chat strength, speech); pass at
@@ -187,7 +197,7 @@ failed, locked to private, sign-in expiring, disk low). ntfy.sh JSON publish to 
 (`data/ntfy.json`); Telegram as an alternative (this ISP blocks Telegram's bot API servers, which is why ntfy exists).
 
 ## 9. Data model (`app/db.py`)
-Append-only migrations tracked by `PRAGMA user_version` (15 so far). Main tables:
+Append-only migrations tracked by `PRAGMA user_version` (16 so far). Main tables:
 
 | Table | Holds |
 |---|---|
@@ -218,5 +228,6 @@ Plain HTML/CSS/JS, no build step, served by the app. Polls `/api/overview` every
 | Official chat cost | ~1,780 units per stream-hour |
 | Whisper small, 40 s clip, CPU | 30–160 s |
 | AI review (gemma4:e2b, 6 frames) | ~2 min |
+| Nudity scan (NudeNet, 80 frames × 5 views) | ~10–25 s |
 | Title generation | 70–90 s |
 | Ctrl+C to process gone (`python -m app`) | 0.2 s, even mid-download |

@@ -25,12 +25,13 @@ SCHEMA = {
     "properties": {
         **{k: {"type": "integer", "minimum": 0, "maximum": 10} for k in CRITERIA},
         "gta_on_screen": {"type": "boolean"},
+        "nudity": {"type": "boolean"},
         "funny": {"type": "integer", "minimum": 0, "maximum": 10},
         "summary": {"type": "string"},
         "reject": {"type": "boolean"},
         "reason": {"type": "string"},
     },
-    "required": [*CRITERIA, "gta_on_screen", "funny", "summary", "reject", "reason"],
+    "required": [*CRITERIA, "gta_on_screen", "nudity", "funny", "summary", "reject", "reason"],
 }
 
 PROMPT = """You are a strict editor choosing YouTube Shorts from GTA 6 livestreams.
@@ -62,6 +63,8 @@ gta_on_screen: true if GTA 6 is on screen in most frames: gameplay, cutscenes, t
   a post-credits scene, a loading screen. False only if the screen mostly shows the streamer's desktop, stream
   tools (giveaway, poll, alerts), a different game, or only the webcam.
 funny: 0 to 10, how funny this is to a stranger who doesn't know the streamer (10 = laugh out loud).
+nudity: true if ANY frame shows exposed genitals, bare buttocks, female nipples or sexual activity (game
+  characters count). YouTube removes these, so when in doubt say true.
 
 summary: one plain sentence saying what happens in the clip.
 reject: true if this should never be posted (boring, menus/loading, nothing happens, offensive content).
@@ -77,6 +80,7 @@ class LlmVerdict:
     reason: str
     gta_on_screen: bool = True
     funny: int = 0
+    nudity: bool = False
 
     @property
     def score(self) -> float:
@@ -135,4 +139,4 @@ class OllamaJudge:
         scores = {k: max(0, min(10, int(data.get(k, 0)))) for k in CRITERIA}
         return LlmVerdict(scores, str(data.get("summary", "")).strip(), bool(data.get("reject", False)),
                           str(data.get("reason", "")).strip(), bool(data.get("gta_on_screen", True)),
-                          max(0, min(10, int(data.get("funny", 0)))))
+                          max(0, min(10, int(data.get("funny", 0)))), bool(data.get("nudity", False)))
