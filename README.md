@@ -176,6 +176,8 @@ and being used on a paid Google API. Close both doors (replace `<project-id>` wi
 
 **Secrets stay local and out of git** (`.gitignore` covers them): `.env` (API key, tokens), `data/client_secret.json`
 and `data/youtube_token.json` (YouTube sign-in), `data/ntfy.json` (your alert topic is the only key to it).
+The app also restricts these files to your Windows account (on a secondary drive, files are otherwise readable by
+every account on the PC), when it writes them and again at every start.
 
 ## Troubleshooting
 | Symptom | Fix |
@@ -210,5 +212,6 @@ app/
 tests/               pytest suite (synthetic streams, fakes for YouTube/Ollama/yt-dlp)
 docs/                setup guides, architecture, research, ideas
 ```
-#   g t a - v i - c l i p p i n g - f a c t o r y  
+#   g t a - v i - c l i p p i n g - f a c t o r y 
+ 
  

@@ -1,0 +1,148 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Clip Factory</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 16 16%27%3E%3Ccircle cx=%278%27 cy=%278%27 r=%276%27 fill=%27%23e0322f%27/%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,500..900&family=Instrument+Sans:wght@400..700&family=JetBrains+Mono:wght@400;600&display=swap">
+<link rel="stylesheet" href="/static/app.css">
+</head>
+<body>
+<header class="masthead">
+  <div class="brand">
+    <span class="wordmark">Clip Factory</span>
+    <span class="brand-sub" id="brand-sub">GTA VI livestreams → Shorts</span>
+  </div>
+  <ul class="gauges" id="gauges" aria-label="System status"></ul>
+</header>
+
+<nav class="jump" aria-label="Sections">
+  <a href="#on-air">On air</a><a href="#past">Past streams</a><a href="#clips">Clips</a><a href="#publishing">Publishing</a>
+  <a href="#channels">Channels</a><a href="#system">System</a>
+</nav>
+
+<main>
+  <section id="on-air" class="band">
+    <div class="band-head">
+      <h2>On air</h2>
+      <p class="band-note" id="poll-note">Checking channels…</p>
+      <button class="btn ghost" id="poll-now" type="button">Check now</button>
+      <button class="btn" id="add-streamer" type="button">Add streamer</button>
+    </div>
+    <div id="strips" class="strips" aria-live="polite"></div>
+  </section>
+
+  <section id="past" class="band">
+    <div class="band-head">
+      <h2>Past streams</h2>
+      <p class="band-note" id="vod-note"></p>
+      <button class="btn ghost" id="vod-scan" type="button">Look for new streams</button>
+    </div>
+    <form id="add-vod" class="add-channel">
+      <label for="vod-url">Clip a past stream</label>
+      <input id="vod-url" name="url" type="text" required placeholder="Paste the stream's link, e.g. https://www.youtube.com/watch?v=…" autocomplete="off">
+      <button class="btn" type="submit">Find moments</button>
+      <p class="form-msg" id="vod-msg" role="status"></p>
+    </form>
+    <ol id="vod-jobs" class="queue"></ol>
+  </section>
+
+  <section id="clips" class="band">
+    <div class="band-head">
+      <h2>Clips</h2>
+      <div class="chips" id="clip-filters" role="tablist" aria-label="Filter clips"></div>
+    </div>
+    <div id="clip-grid" class="clip-grid"></div>
+  </section>
+
+  <section id="publishing" class="band">
+    <div class="band-head">
+      <h2>Publishing</h2>
+      <p class="band-note" id="publish-note"></p>
+    </div>
+    <div class="split-cols">
+      <div>
+        <h3>Up next</h3>
+        <ol id="queue" class="queue"></ol>
+      </div>
+      <div>
+        <h3>History</h3>
+        <ol id="history" class="history"></ol>
+      </div>
+    </div>
+  </section>
+
+  <section id="channels" class="band">
+    <div class="band-head">
+      <h2>Channels</h2>
+      <p class="band-note">Clips are only uploaded for channels whose creator has given you permission.</p>
+    </div>
+    <form id="add-channel" class="add-channel">
+      <label for="channel-url">Add a streamer's YouTube channel</label>
+      <input id="channel-url" name="url" type="text" required placeholder="Paste a link, e.g. https://www.youtube.com/@LacyHimself" autocomplete="off">
+      <button class="btn" type="submit">Add streamer</button>
+      <p class="form-msg" id="add-msg" role="status"></p>
+    </form>
+    <div class="table-wrap">
+      <table class="channel-table">
+        <thead><tr>
+          <th scope="col">Channel</th><th scope="col">Watch</th><th scope="col">Record &amp; clip</th><th scope="col">Past streams</th>
+          <th scope="col">Upload allowed</th><th scope="col">Layout</th><th scope="col">Chat delay</th><th scope="col"></th>
+        </tr></thead>
+        <tbody id="channel-rows"></tbody>
+      </table>
+    </div>
+  </section>
+
+  <section id="system" class="band">
+    <div class="band-head"><h2>System</h2></div>
+    <div class="split-cols">
+      <div>
+        <h3>Storage</h3>
+        <div id="storage"></div>
+        <h3>Recent problems</h3>
+        <ol id="errors" class="errors"></ol>
+      </div>
+      <div>
+        <details id="log-box">
+          <summary>Log <span class="muted">(last 200 lines)</span></summary>
+          <pre id="log" class="log" tabindex="0"></pre>
+        </details>
+      </div>
+    </div>
+  </section>
+</main>
+
+<dialog id="clip-dialog" class="drawer" aria-labelledby="d-title">
+  <div class="drawer-inner">
+    <div class="drawer-media"><video id="d-video" controls playsinline preload="metadata"></video></div>
+    <div class="drawer-body">
+      <div class="drawer-top">
+        <p class="eyebrow" id="d-eyebrow"></p>
+        <button class="btn ghost close" type="button" id="d-close" aria-label="Close">Close</button>
+      </div>
+      <h2 id="d-title"></h2>
+      <p class="d-summary" id="d-summary"></p>
+      <div class="d-actions" id="d-actions"></div>
+      <div class="d-note" id="d-note-box" hidden>
+        <label for="d-note">Tell the AI what's on screen</label>
+        <textarea id="d-note" rows="2" maxlength="500" placeholder="e.g. GTA 6 pause menu right after the finale, then the post-credits scene"></textarea>
+        <button class="btn" type="button" data-act="renote">Review again with this note</button>
+      </div>
+      <p class="form-msg" id="d-msg" role="status"></p>
+      <div id="d-scores"></div>
+      <div id="d-meta"></div>
+      <h3>What they said</h3>
+      <p class="transcript" id="d-transcript"></p>
+      <h3>What chat said</h3>
+      <ul class="chat-sample" id="d-chat"></ul>
+    </div>
+  </div>
+</dialog>
+
+<script src="/static/app.js"></script>
+</body>
+</html>
