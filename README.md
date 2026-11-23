@@ -212,6 +212,3 @@ app/
 tests/               pytest suite (synthetic streams, fakes for YouTube/Ollama/yt-dlp)
 docs/                setup guides, architecture, research, ideas
 ```
-#   g t a - v i - c l i p p i n g - f a c t o r y 
- 
- 
