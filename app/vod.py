@@ -45,6 +45,12 @@ RETRY_MINUTES = 15
 ACTIVE = ("queued", "analyzing", "clipping", "waiting_chat")
 
 
+def chat_time_limit(duration_s: float | None) -> float:
+    """Seconds allowed for a chat replay download. Busy chats download slowly: IShowSpeed's read ~6 stream-hours per
+    hour (a 23.7 h stream would take ~4 h); quiet ones (Lacy) 6 h in a minute. 15 min per stream-hour, at least 45 min."""
+    return max(45 * 60, (duration_s or 0) / 3600 * 15 * 60)
+
+
 def _iso(ts: str) -> datetime:
     return datetime.fromisoformat(ts.replace("Z", "+00:00"))
 
@@ -76,7 +82,7 @@ class VodTools:
             out, err = proc.communicate(timeout=timeout)
         except subprocess.TimeoutExpired:
             kill_tree(proc)
-            raise RuntimeError(f"yt-dlp timed out after {timeout:.0f} s")
+            raise RuntimeError(f"yt-dlp was stopped at its {timeout / 60:.0f}-minute limit")   # not a network error
         return proc.returncode, out.decode("utf-8", "replace"), err.decode("utf-8", "replace")
 
     def _call(self, args: list[str], timeout: float) -> str:
@@ -98,10 +104,10 @@ class VodTools:
         return {"title": d.get("title"), "duration": d.get("duration"), "live_status": d.get("live_status"),
                 "has_chat": "live_chat" in (d.get("subtitles") or {})}
 
-    def chat_replay(self, video_id: str, out_base: Path) -> Path | None:
+    def chat_replay(self, video_id: str, out_base: Path, duration_s: float | None = None) -> Path | None:
         """Download the whole chat replay (one JSON object per line). None if YouTube has none."""
         self._call(["--skip-download", "--write-subs", "--sub-langs", "live_chat", "-o", str(out_base),
-                    f"https://www.youtube.com/watch?v={video_id}"], timeout=45 * 60)
+                    f"https://www.youtube.com/watch?v={video_id}"], timeout=chat_time_limit(duration_s))
         path = Path(f"{out_base}.live_chat.json")
         return path if path.exists() and path.stat().st_size else None
 
@@ -121,6 +127,7 @@ class VodTools:
 @dataclass(frozen=True)
 class VodPolicy:
     max_age_hours: float = 72
+    max_hours: float = 16           # longer streams are skipped: their chat replay takes hours to download
     min_minutes: float = 20
     title_keywords: tuple[str, ...] = ("gta 6", "gta vi", "gta6", "gtavi", "grand theft auto")
     max_clips: int = 6
@@ -133,7 +140,7 @@ class VodPolicy:
 
     @classmethod
     def from_settings(cls, s) -> "VodPolicy":
-        return cls(max_age_hours=s.vod_max_age_hours, min_minutes=s.vod_min_minutes,
+        return cls(max_age_hours=s.vod_max_age_hours, min_minutes=s.vod_min_minutes, max_hours=s.vod_max_hours,
                    title_keywords=tuple(k.strip().lower() for k in s.vod_title_keywords.split(",") if k.strip()),
                    max_clips=s.vod_max_clips, min_peak_chatters=s.vod_min_peak_chatters,
                    default_chat_delay=s.vod_chat_delay_seconds,
@@ -150,7 +157,14 @@ def skip_reason(title: str, ended: datetime, duration_s: float | None, policy: V
         return f"ended more than {policy.max_age_hours:g} h ago"
     if duration_s is not None and duration_s < policy.min_minutes * 60:
         return f"shorter than {policy.min_minutes:g} min"
+    if duration_s is not None and duration_s > policy.max_hours * 3600:
+        return too_long(policy)
     return None
+
+
+def too_long(policy: VodPolicy) -> str:
+    return (f"longer than {policy.max_hours:g} h: its chat replay would take hours to download "
+            "(paste its link to clip it anyway)")
 
 
 # -- discovery ----------------------------------------------------------------------------------------
@@ -289,6 +303,10 @@ class VodWorker:
 
     def process(self, job: dict, now: datetime) -> None:
         jid, vid = job["id"], job["video_id"]
+        if job["origin"] == "scan" and (job["duration_s"] or 0) > self.policy.max_hours * 3600:
+            self._set(jid, status="skipped", error=too_long(self.policy))    # queued before the length rule existed
+            shutil.rmtree(self.work_dir / vid, ignore_errors=True)          # a partial chat download from before
+            return
         job["attempts"] += 1
         self._set(jid, status="analyzing", attempts=job["attempts"], error=None)
         work = self.work_dir / vid
@@ -303,7 +321,7 @@ class VodWorker:
                 self._no_chat(job, now)
                 return
             work.mkdir(parents=True, exist_ok=True)
-            path = self.tools.chat_replay(vid, work / "chat")
+            path = self.tools.chat_replay(vid, work / "chat", duration_s=job["duration_s"])
             if path is None:
                 self._no_chat(job, now)
                 return

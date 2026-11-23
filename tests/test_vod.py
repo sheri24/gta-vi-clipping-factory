@@ -75,7 +75,7 @@ class FakeTools:
         self.calls.append(f"info:{video_id}")
         return self.infos.get(video_id, {"title": "t", "duration": 2400, "live_status": "was_live", "has_chat": True})
 
-    def chat_replay(self, video_id, out_base: Path):
+    def chat_replay(self, video_id, out_base: Path, duration_s=None):
         self.calls.append(f"chat:{video_id}")
         lines = self.replays.get(video_id)
         if lines is None:
@@ -498,3 +498,32 @@ def test_live_clip_outranks_equal_vod_clip_in_upload_queue(db):
     enqueue_approved(db)
     rows = db.query("SELECT x.source_kind, q.priority FROM publish_queue q JOIN clips x ON x.id = q.clip_id")
     assert {r["source_kind"]: r["priority"] for r in rows} == {"live": 8.0, "vod": 7.0}
+
+
+
+def test_very_long_streams_are_skipped_unless_pasted(db, tmp_path):
+    """IShowSpeed's 23.7 h stream: its chat replay reads ~6 stream-hours per hour, so ~4 h of downloading."""
+    assert "longer than 16 h" in skip_reason("GTA 6", NOW - timedelta(hours=1), 23.7 * 3600, VodPolicy(), NOW)
+    add_channel(db)
+    jid = queue_job(db)                                   # queued before the length rule existed
+    db.execute("UPDATE vod_jobs SET duration_s = ? WHERE id = ?", (23.7 * 3600, jid))
+    tools = FakeTools()
+    make_worker(db, tools, tmp_path).run_once(NOW)
+    job = db.one("SELECT status, error FROM vod_jobs WHERE id = ?", (jid,))
+    assert job["status"] == "skipped" and "paste its link" in job["error"] and not tools.calls
+
+    db.execute("UPDATE vod_jobs SET status = 'queued', origin = 'link' WHERE id = ?", (jid,))
+    tools.replays[VID] = replay()
+    make_worker(db, tools, tmp_path).run_once(NOW)        # a pasted link is clipped whatever its length
+    assert db.one("SELECT status FROM vod_jobs WHERE id = ?", (jid,))["status"] == "clipping"
+
+
+def test_our_own_time_limit_is_not_an_internet_outage():
+    """It was, and the 23.7 h stream restarted its 45-minute download forever."""
+    from app.net import is_network_error
+    from app.vod import chat_time_limit
+    assert not is_network_error(RuntimeError("yt-dlp was stopped at its 45-minute limit"))
+    assert is_network_error(RuntimeError("ERROR: [youtube] Read timed out"))
+    assert chat_time_limit(None) == chat_time_limit(2 * 3600) == 45 * 60       # floor
+    assert chat_time_limit(12 * 3600) == 3 * 3600                              # 15 min per stream-hour
+    assert chat_time_limit(23.7 * 3600) > 5 * 3600

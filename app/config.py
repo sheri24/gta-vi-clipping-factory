@@ -58,6 +58,7 @@ class Settings(BaseSettings):
     vod_streams_per_channel: int = 6        # newest entries of each channel's Live tab to consider
     vod_max_age_hours: float = 72           # older streams are skipped: everyone has clipped them by then
     vod_min_minutes: float = 20             # shorter streams are skipped
+    vod_max_hours: float = 16               # longer ones too: a 24 h stream's chat replay takes ~4 h to download
     vod_title_keywords: str = "gta 6,gta vi,gta6,gtavi,grand theft auto"   # empty = any title
     vod_max_clips: int = 6                  # strongest chat spikes per stream (uploads are capped per day anyway)
     vod_min_peak_chatters: int = 10         # weaker bursts aren't worth a clip from a past stream
